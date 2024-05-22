@@ -5,16 +5,35 @@
 const char* apSSID = "ESP32WROOM32UE_AP";
 const char* apPassword = "abc12345678";
 
+//WebServer object on port 80
 WebServer server(80);
 
+//ADC pin 
 const int analogPin = 34;
 
+//variables to store readings and timestamps
 #define MAX_READINGS 1000
-int readings[MAX_READINGS];
+struct Reading {
+  int value;
+  String timestamp;
+};
+Reading readings[MAX_READINGS];
 int readingIndex = 0;
-bool isReading = false; // Flag to control reading
+bool isReading = false; //flag to control reading
 
-// HTML webpage
+//function to format the elapsed time in hh:mm:ss format
+String formatTime(unsigned long milliseconds) {
+  unsigned long seconds = milliseconds / 1000;
+  unsigned long minutes = seconds / 60;
+  unsigned long hours = minutes / 60;
+  seconds %= 60;
+  minutes %= 60;
+  char timeString[10];
+  snprintf(timeString, sizeof(timeString), "%02lu:%02lu:%02lu", hours, minutes, seconds);
+  return String(timeString);
+}
+
+//HTML web page
 const char* htmlPage = R"rawliteral(
 <!DOCTYPE html>
 <html>
@@ -30,7 +49,8 @@ const char* htmlPage = R"rawliteral(
   </style>
 </head>
 <body>
-  <h1>ESP32 Analog Reading</h1>
+  <h1>Mechanica Systems</h1>
+  <h2>ESP32 WROOM 32UE Analog Reading</h2>
   <p>Analog Value: <span id="analogValue">N/A</span></p>
   <p><button class="button button-start" onclick="startReading()">Start Reading</button></p>
   <p><button class="button button-stop" onclick="stopReading()">Stop Reading</button></p>
@@ -58,17 +78,19 @@ const char* htmlPage = R"rawliteral(
 </html>
 )rawliteral";
 
-
+//function to handle the root path "/"
 void handleRoot() {
   server.send(200, "text/html", htmlPage);
 }
 
-// Function to handle refreshing values
+//function to handle refreshing the values
 void handleAnalog() {
   if (isReading) {
     int analogValue = analogRead(analogPin);
     if (readingIndex < MAX_READINGS) {
-      readings[readingIndex++] = analogValue;
+      readings[readingIndex].value = analogValue;
+      readings[readingIndex].timestamp = formatTime(millis());
+      readingIndex++;
     }
     server.send(200, "text/plain", String(analogValue));
   } else {
@@ -76,29 +98,29 @@ void handleAnalog() {
   }
 }
 
-// Function to handle starting the reading
+//function for starting the reading
 void handleStart() {
   isReading = true;
   server.send(200, "text/plain", "Reading Started");
 }
 
-// Function to handle stopping the reading
+//function for stopping the reading
 void handleStop() {
   isReading = false;
   server.send(200, "text/plain", "Reading Stopped");
 }
 
-// Function to handle downloading the CSV file
+//function for downloading the CSV file
 void handleDownload() {
-  String csv = "Reading\n";
+  String csv = "Timestamp,Reading\n";
   for (int i = 0; i < readingIndex; i++) {
-    csv += String(readings[i]) + "\n";
+    csv += readings[i].timestamp + "," + String(readings[i].value) + "\n";
   }
   server.send(200, "text/csv", csv);
 }
 
 void setup() {
-  
+
   Serial.begin(115200);
   delay(10);
 
@@ -107,17 +129,17 @@ void setup() {
   Serial.println();
   Serial.println("Configuring access point...");
 
-  // Initialize the WiFi as Access Point
+  //initializing the WiFi Access Point
   WiFi.softAP(apSSID, apPassword);
 
-  // Print the IP address
+  //getting the IP address
   Serial.print("Access Point \"");
   Serial.print(apSSID);
   Serial.println("\" started");
   Serial.print("IP Address: ");
   Serial.println(WiFi.softAPIP());
 
-
+  //define the handling functions for specific paths
   server.on("/", handleRoot);
   server.on("/analog", handleAnalog);
   server.on("/start", handleStart);
@@ -128,5 +150,6 @@ void setup() {
 }
 
 void loop() {
+  //handling client requests
   server.handleClient();
 }
